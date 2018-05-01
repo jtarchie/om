@@ -12,6 +12,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/aws/aws-sdk-go/aws/client"
 )
 
 func parseTime(timeString interface{}) *time.Time {
@@ -112,7 +113,7 @@ var _ = Describe("InstallationsService", func() {
 					Body:       ioutil.NopCloser(strings.NewReader(`{"install":{"id":1}}`)),
 				}, nil)
 
-				output, err := service.CreateInstallation(false, true)
+				output, err := service.CreateInstallation(false, true, nil)
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(output.ID).To(Equal(1))
@@ -124,7 +125,7 @@ var _ = Describe("InstallationsService", func() {
 
 				body, err := ioutil.ReadAll(req.Body)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(string(body)).To(Equal(`{"ignore_warnings":"false","deploy_products":"all"}`))
+				Expect(string(body)).To(MatchJSON(`{"ignore_warnings":"false","deploy_products":"all"}`))
 			})
 		})
 
@@ -135,7 +136,7 @@ var _ = Describe("InstallationsService", func() {
 					Body:       ioutil.NopCloser(strings.NewReader(`{"install":{"id":1}}`)),
 				}, nil)
 
-				output, err := service.CreateInstallation(false, false)
+				output, err := service.CreateInstallation(false, false, nil)
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(output.ID).To(Equal(1))
@@ -147,7 +148,47 @@ var _ = Describe("InstallationsService", func() {
 
 				body, err := ioutil.ReadAll(req.Body)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(string(body)).To(Equal(`{"ignore_warnings":"false","deploy_products":"none"}`))
+				Expect(string(body)).To(MatchJSON(`{"ignore_warnings":"false","deploy_products":"none"}`))
+			})
+		})
+
+		Context("when deploying with errands payload", func() {
+			It("triggers the installation with the errands", func() {
+				client.DoReturns(&http.Response{
+					StatusCode: http.StatusOK,
+					Body:       ioutil.NopCloser(strings.NewReader(`{"install":{"id":1}}`)),
+				}, nil)
+
+				errandsPayload := map[string]map[string]map[string]interface{} {
+					"product-a": {
+						"pre-delete": {
+							"errand-a": true,
+							"errand-b": false,
+						},
+						"post-deploy": {
+							"errand-c": "default",
+						},
+					},
+				}
+
+				output, err := service.CreateInstallation(false, false, errandsPayload)
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(output.ID).To(Equal(1))
+
+				req := client.DoArgsForCall(0)
+
+				Expect(req.Method).To(Equal("POST"))
+				Expect(req.URL.Path).To(Equal("/api/v0/installations"))
+
+				body, err := ioutil.ReadAll(req.Body)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(body)).To(MatchJSON(`{
+					"ignore_warnings":"false",
+					"deploy_products":"none",
+					"errands": {
+					}
+				}`))
 			})
 		})
 

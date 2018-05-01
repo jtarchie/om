@@ -3,6 +3,7 @@ package commands_test
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"time"
 
 	"github.com/pivotal-cf/jhanda"
@@ -226,6 +227,39 @@ var _ = Describe("ApplyChanges", func() {
 
 			err := command.Execute([]string{})
 			Expect(err).To(MatchError("installation was unsuccessful"))
+		})
+
+		Context("When specifying -e (--errands)", func() {
+			It("takes a file and applies those errands", func() {
+				service.CreateInstallationReturns(api.InstallationsServiceOutput{ID: 311}, nil)
+				command := commands.NewApplyChanges(service, writer, logger, 1)
+
+				errandsYAML := `
+---
+product1_name:
+  pre-delete:
+    errand_a: true
+    errand_b: false
+  post-deploy:
+    errand_c: "default"
+product2_name:
+  post-deploy:
+    errand_a: false
+  pre-delete:
+    errand_b: "when-changed"
+`
+
+				errandsFile, err := ioutil.TempFile("", "config.yaml")
+				Expect(err).ToNot(HaveOccurred())
+				_, err = errandsFile.WriteString(errandsYAML)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(errandsFile.Close()).ToNot(HaveOccurred())
+
+				err = command.Execute([]string{"-e", errandsFile.Name()})
+				Expect(err).NotTo(HaveOccurred())
+
+
+			})
 		})
 
 		Context("failure cases", func() {
